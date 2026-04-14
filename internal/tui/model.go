@@ -48,6 +48,7 @@ type Model struct {
 
 	focusCol, focusTask int
 	filter              string
+	showHidden          bool
 
 	titleInput  textinput.Model
 	bodyInput   textarea.Model
@@ -329,6 +330,15 @@ func (m *Model) updateBoard(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.filterInput.SetValue(m.filter)
 		m.filterInput.Focus()
 		return m, textinput.Blink
+	case key.Matches(msg, k.ToggleHidden):
+		m.showHidden = !m.showHidden
+		if m.showHidden {
+			m.status = "showing hidden done tasks"
+		} else {
+			m.status = "hiding old done tasks"
+		}
+		m.clampFocusToVisible()
+		return m, nil
 	case key.Matches(msg, k.Left):
 		if len(m.board.Columns) > 0 {
 			m.focusCol = (m.focusCol - 1 + len(m.board.Columns)) % len(m.board.Columns)
@@ -575,8 +585,31 @@ func (m *Model) clampFocus() {
 	}
 }
 
+// isDoneColumn reports whether a column holds "done" tasks, by title match.
+// Case-insensitive and whitespace-trimmed so renamed variants still work.
+func isDoneColumn(title string) bool {
+	return strings.EqualFold(strings.TrimSpace(title), "done")
+}
+
+// isHiddenDone reports whether a task should be hidden by the time-based
+// done-pruning rule. Requires a Done column, a configured horizon > 0, and
+// showHidden == false.
+func (m *Model) isHiddenDone(col tasks.Column, t tasks.Task) bool {
+	if m.showHidden {
+		return false
+	}
+	if m.cfg.HideDoneAfterDays <= 0 {
+		return false
+	}
+	if !isDoneColumn(col.Title) {
+		return false
+	}
+	age := time.Since(t.UpdatedAt)
+	return age > time.Duration(m.cfg.HideDoneAfterDays)*24*time.Hour
+}
+
 // visibleTaskIndices returns the indices of tasks in the focused column that
-// pass the current filter. When no filter is set, it returns all indices.
+// pass the current filter and aren't hidden by the done-pruning rule.
 func (m *Model) visibleTaskIndices() []int {
 	col := m.currentColumn()
 	if col == nil {
@@ -584,9 +617,13 @@ func (m *Model) visibleTaskIndices() []int {
 	}
 	var out []int
 	for i, t := range col.Tasks {
-		if m.filter == "" || matchesFilter(t, m.filter) {
-			out = append(out, i)
+		if m.filter != "" && !matchesFilter(t, m.filter) {
+			continue
 		}
+		if m.isHiddenDone(*col, t) {
+			continue
+		}
+		out = append(out, i)
 	}
 	return out
 }
@@ -826,14 +863,22 @@ func (m *Model) renderColumn(ci int, col tasks.Column, width int) string {
 	rule := ruleStyle.Render(strings.Repeat("─", width-2))
 
 	parts := []string{title, rule}
+	hidden := 0
 	for ti, t := range col.Tasks {
 		if m.filter != "" && !matchesFilter(t, m.filter) {
+			continue
+		}
+		if m.isHiddenDone(col, t) {
+			hidden++
 			continue
 		}
 		parts = append(parts, m.renderCard(ci, ti, t, width-2))
 	}
 	if len(parts) == 2 {
 		parts = append(parts, styleHelp.Render("  (empty)"))
+	}
+	if hidden > 0 {
+		parts = append(parts, styleHelp.Render(fmt.Sprintf("  +%d hidden · press a", hidden)))
 	}
 	return lipgloss.NewStyle().Width(width).Padding(0, 1).Render(
 		lipgloss.JoinVertical(lipgloss.Left, parts...),

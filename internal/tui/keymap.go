@@ -13,7 +13,7 @@ func (k keymap) FullHelp() [][]key.Binding {
 		{k.Left, k.Right, k.Up, k.Down},
 		{k.MoveLeft, k.MoveRight, k.MoveUp, k.MoveDown},
 		{k.New, k.Edit, k.Delete, k.Filter},
-		{k.Help, k.Quit},
+		{k.ToggleHidden, k.Help, k.Quit},
 	}
 }
 
@@ -24,6 +24,7 @@ type keymap struct {
 	MoveUp, MoveDown    key.Binding
 	New, Edit, Delete   key.Binding
 	Filter, Help        key.Binding
+	ToggleHidden        key.Binding
 	Confirm, Cancel     key.Binding
 	Quit                key.Binding
 }
@@ -41,8 +42,9 @@ func newKeymap() keymap {
 		New:       key.NewBinding(key.WithKeys("n"), key.WithHelp("n", "new card")),
 		Edit:      key.NewBinding(key.WithKeys("e", "enter"), key.WithHelp("e/⏎", "edit card")),
 		Delete:    key.NewBinding(key.WithKeys("d"), key.WithHelp("d", "delete card")),
-		Filter:    key.NewBinding(key.WithKeys("/"), key.WithHelp("/", "filter")),
-		Help:      key.NewBinding(key.WithKeys("?"), key.WithHelp("?", "help")),
+		Filter:       key.NewBinding(key.WithKeys("/"), key.WithHelp("/", "filter")),
+		Help:         key.NewBinding(key.WithKeys("?"), key.WithHelp("?", "help")),
+		ToggleHidden: key.NewBinding(key.WithKeys("a"), key.WithHelp("a", "show hidden done")),
 		Confirm:   key.NewBinding(key.WithKeys("y", "Y")),
 		Cancel:    key.NewBinding(key.WithKeys("esc", "n", "N")),
 		Quit:      key.NewBinding(key.WithKeys("q", "ctrl+c"), key.WithHelp("q", "quit")),
