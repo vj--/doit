@@ -1,7 +1,6 @@
 # doit
 
 [![Release](https://img.shields.io/github/v/release/vj--/doit?label=release)](https://github.com/vj--/doit/releases/latest)
-[![Go Reference](https://pkg.go.dev/badge/github.com/vj/doit.svg)](https://pkg.go.dev/github.com/vj/doit)
 [![CI](https://github.com/vj--/doit/actions/workflows/ci.yml/badge.svg)](https://github.com/vj--/doit/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
