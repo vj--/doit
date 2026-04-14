@@ -65,34 +65,44 @@ func Parse(data []byte) (tasks.Board, error) {
 
 	for i < len(lines) {
 		raw := lines[i]
-		trim := strings.TrimSpace(raw)
 
-		// Column heading.
-		if strings.HasPrefix(trim, "## ") {
+		// Column heading. Match on the raw line (column 0) so nested "## " inside
+		// a fenced code block inside a task body doesn't falsely close the column.
+		if strings.HasPrefix(raw, "## ") {
 			flushCol()
-			title := strings.TrimSpace(strings.TrimPrefix(trim, "## "))
+			title := strings.TrimSpace(strings.TrimPrefix(raw, "## "))
 			curCol = &tasks.Column{ID: tasks.Slug(title), Title: title}
 			i++
 			continue
 		}
 
-		// Task: list item starting with "- ".
-		if curCol != nil && strings.HasPrefix(trim, "- ") {
-			// Collect the full item: starting line plus indented continuation lines
-			// until a blank line, another list item, or a heading.
-			item := []string{strings.TrimPrefix(trim, "- ")}
+		// Task: list bullet at column 0. Indented "- " lines (GFM task checklists,
+		// nested lists) belong to a body and must NOT start a new task.
+		if curCol != nil && strings.HasPrefix(raw, "- ") {
+			item := []string{strings.TrimPrefix(raw, "- ")}
 			i++
+			// Collect continuation lines: anything indented (treat as body line,
+			// with leading whitespace stripped) OR blank (preserved as blank). A
+			// non-indented, non-blank line ends the item — that means a new
+			// column heading or a new "- " bullet at column 0.
 			for i < len(lines) {
 				next := lines[i]
-				nt := strings.TrimSpace(next)
-				if nt == "" {
-					break
+				if next == "" {
+					item = append(item, "")
+					i++
+					continue
 				}
-				if strings.HasPrefix(nt, "## ") || strings.HasPrefix(nt, "# ") || strings.HasPrefix(nt, "- ") {
-					break
+				if strings.HasPrefix(next, " ") || strings.HasPrefix(next, "\t") {
+					item = append(item, strings.TrimLeft(next, " \t"))
+					i++
+					continue
 				}
-				item = append(item, strings.TrimLeft(next, " \t"))
-				i++
+				break
+			}
+			// Drop trailing blank lines that come from the paragraph break between
+			// tasks; they are formatting, not body content.
+			for len(item) > 0 && item[len(item)-1] == "" {
+				item = item[:len(item)-1]
 			}
 			t, err := parseTask(item)
 			if err != nil {
