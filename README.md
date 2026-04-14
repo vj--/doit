@@ -6,6 +6,10 @@
 
 A local-first, Kanban-style todo app that lives in your **terminal** and is backed by a **git repository** instead of a database. Your tasks are a single markdown file in a repo you control — the app renders a keyboard-driven Kanban TUI, and commits every change locally. You push to GitHub (or any remote) whenever you want.
 
+![doit Kanban board in the terminal](.github/assets/board.png)
+
+*The focused card opens a markdown-rendered detail pane; labels drive tag colors and priority stripes.*
+
 > **Note:** This project is **AI-generated**. It was designed and implemented with [Claude Code](https://claude.com/claude-code) (Anthropic's CLI coding assistant) in collaboration with the repository owner. Treat it accordingly — review the code before you trust it with anything important.
 
 ## Why
@@ -22,6 +26,10 @@ A local-first, Kanban-style todo app that lives in your **terminal** and is back
 2. The app opens a Kanban board in your terminal.
 3. Move cards with the keyboard, edit tasks, add new ones — every change is written back to the markdown file and committed locally.
 4. You run `git push` when you want to sync to a remote. The app never pushes for you.
+
+![Edit confirmation in the status bar after saving a task](.github/assets/board-editing.png)
+
+*Each mutation (move / edit / create / delete) becomes its own local commit — the status bar echoes the message.*
 
 ## Install
 
