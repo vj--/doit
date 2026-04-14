@@ -52,6 +52,7 @@ type Model struct {
 
 	titleInput  textinput.Model
 	bodyInput   textarea.Model
+	labelsInput textinput.Model
 	filterInput textinput.Model
 	editingNew  bool
 
@@ -124,6 +125,9 @@ func NewModel(ctx context.Context, cfg config.Config, s *store.Store) (*Model, e
 	m.bodyInput = textarea.New()
 	m.bodyInput.Placeholder = "Details (optional)"
 	m.bodyInput.SetHeight(5)
+	m.labelsInput = textinput.New()
+	m.labelsInput.Placeholder = "comma-separated, e.g. bug, urgent"
+	m.labelsInput.CharLimit = 200
 	m.filterInput = textinput.New()
 	m.filterInput.Placeholder = "Filter (substring)"
 	m.filterInput.CharLimit = 200
@@ -225,6 +229,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 		m.bodyInput.SetWidth(msg.Width - 10)
 		m.filterInput.Width = msg.Width - 10
+		m.labelsInput.Width = msg.Width - 10
 		m.help.Width = msg.Width
 		m.rebuildRenderer()
 		return m, nil
@@ -417,13 +422,49 @@ func (m *Model) beginEdit(isNew bool) {
 	if isNew {
 		m.titleInput.SetValue("")
 		m.bodyInput.SetValue("")
+		m.labelsInput.SetValue("")
 	} else {
 		t := m.currentTask()
 		m.titleInput.SetValue(t.Title)
 		m.bodyInput.SetValue(t.Description)
+		m.labelsInput.SetValue(strings.Join(t.Labels, ", "))
 	}
 	m.titleInput.Focus()
 	m.bodyInput.Blur()
+	m.labelsInput.Blur()
+}
+
+// cycleEditFocus moves keyboard focus through title → body → labels → title.
+// shift==true reverses the cycle.
+func (m *Model) cycleEditFocus(shift bool) {
+	order := []func() bool{
+		m.titleInput.Focused,
+		m.bodyInput.Focused,
+		m.labelsInput.Focused,
+	}
+	idx := 0
+	for i, f := range order {
+		if f() {
+			idx = i
+			break
+		}
+	}
+	next := idx + 1
+	if shift {
+		next = idx - 1
+	}
+	next = (next + len(order)) % len(order)
+	m.titleInput.Blur()
+	m.bodyInput.Blur()
+	m.labelsInput.Blur()
+	switch next {
+	case 0:
+		m.titleInput.Focus()
+	case 1:
+		m.bodyInput.Focus()
+	case 2:
+		m.labelsInput.Focus()
+	}
 }
 
 func (m *Model) updateEdit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -432,33 +473,64 @@ func (m *Model) updateEdit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.mode = modeBoard
 		return m, nil
 	case "tab":
-		if m.titleInput.Focused() {
-			m.titleInput.Blur()
-			m.bodyInput.Focus()
-		} else {
-			m.bodyInput.Blur()
-			m.titleInput.Focus()
-		}
+		m.cycleEditFocus(false)
+		return m, nil
+	case "shift+tab":
+		m.cycleEditFocus(true)
 		return m, nil
 	case "ctrl+s":
 		return m.commitEdit()
 	}
-	// Allow Enter to save only when title field is focused (textarea uses Enter for newline).
-	if msg.String() == "enter" && m.titleInput.Focused() {
+	// Allow Enter to save only when a single-line field is focused (textarea
+	// uses Enter for newline, so we must not hijack it there).
+	if msg.String() == "enter" && (m.titleInput.Focused() || m.labelsInput.Focused()) {
 		return m.commitEdit()
 	}
 	var cmd tea.Cmd
-	if m.titleInput.Focused() {
+	switch {
+	case m.titleInput.Focused():
 		m.titleInput, cmd = m.titleInput.Update(msg)
-	} else {
+	case m.labelsInput.Focused():
+		m.labelsInput, cmd = m.labelsInput.Update(msg)
+	default:
 		m.bodyInput, cmd = m.bodyInput.Update(msg)
 	}
 	return m, cmd
 }
 
+// parseLabels splits the label field value (comma-separated) into a slice.
+// Normalization (trim, lowercase, dedup) happens in tasks.normalizeLabels.
+func parseLabels(s string) []string {
+	if strings.TrimSpace(s) == "" {
+		return nil
+	}
+	parts := strings.Split(s, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+func labelsEqual(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
 func (m *Model) commitEdit() (tea.Model, tea.Cmd) {
 	title := strings.TrimSpace(m.titleInput.Value())
 	body := m.bodyInput.Value()
+	labels := parseLabels(m.labelsInput.Value())
 	if title == "" {
 		m.statusErr = true
 		m.status = "title required"
@@ -471,7 +543,7 @@ func (m *Model) commitEdit() (tea.Model, tea.Cmd) {
 	}
 	var commitMsg string
 	if m.editingNew {
-		if _, err := m.board.AddTask(m.focusCol, title, body); err != nil {
+		if _, err := m.board.AddTask(m.focusCol, title, body, labels); err != nil {
 			m.statusErr = true
 			m.status = err.Error()
 			return m, nil
@@ -482,14 +554,16 @@ func (m *Model) commitEdit() (tea.Model, tea.Cmd) {
 		t := m.currentTask()
 		oldTitle := t.Title
 		// No-op short-circuit: if nothing changed, skip the save + commit so we
-		// don't produce a noisy empty-edit commit.
-		if t.Title == title && t.Description == strings.TrimSpace(body) {
+		// don't produce a noisy empty-edit commit. Compare normalized labels so
+		// whitespace/case changes alone don't count as a change.
+		normalizedLabels := tasks.NormalizeLabels(labels)
+		if t.Title == title && t.Description == strings.TrimSpace(body) && labelsEqual(t.Labels, normalizedLabels) {
 			m.mode = modeBoard
 			m.statusErr = false
 			m.status = "no changes"
 			return m, nil
 		}
-		if err := m.board.UpdateTask(m.focusCol, m.focusTask, title, body); err != nil {
+		if err := m.board.UpdateTask(m.focusCol, m.focusTask, title, body, labels); err != nil {
 			m.statusErr = true
 			m.status = err.Error()
 			return m, nil
@@ -780,8 +854,10 @@ func (m *Model) viewEdit() string {
 		m.titleInput.View(),
 		labelStyle.Render("Body"),
 		m.bodyInput.View(),
+		labelStyle.Render("Labels (comma-separated)"),
+		m.labelsInput.View(),
 		"",
-		styleHelp.Render("Tab switch · ⏎/Ctrl+S save · Esc cancel"),
+		styleHelp.Render("Tab/Shift+Tab cycle · ⏎ (title/labels) / Ctrl+S save · Esc cancel"),
 	)
 	return styleModal.Render(box)
 }

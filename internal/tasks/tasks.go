@@ -92,7 +92,7 @@ func (b *Board) FindTask(taskID string) (colIdx, taskIdx int, ok bool) {
 }
 
 // AddTask appends a new task to the given column.
-func (b *Board) AddTask(colIdx int, title, description string) (Task, error) {
+func (b *Board) AddTask(colIdx int, title, description string, labels []string) (Task, error) {
 	if colIdx < 0 || colIdx >= len(b.Columns) {
 		return Task{}, errors.New("column index out of range")
 	}
@@ -101,6 +101,7 @@ func (b *Board) AddTask(colIdx int, title, description string) (Task, error) {
 		ID:          NewID(),
 		Title:       strings.TrimSpace(title),
 		Description: strings.TrimSpace(description),
+		Labels:      normalizeLabels(labels),
 		CreatedAt:   now,
 		UpdatedAt:   now,
 	}
@@ -111,8 +112,8 @@ func (b *Board) AddTask(colIdx int, title, description string) (Task, error) {
 	return t, nil
 }
 
-// UpdateTask replaces the title/description of a task, preserving other fields.
-func (b *Board) UpdateTask(colIdx, taskIdx int, title, description string) error {
+// UpdateTask replaces the title/description/labels of a task, preserving other fields.
+func (b *Board) UpdateTask(colIdx, taskIdx int, title, description string, labels []string) error {
 	if err := b.checkPos(colIdx, taskIdx); err != nil {
 		return err
 	}
@@ -123,8 +124,39 @@ func (b *Board) UpdateTask(colIdx, taskIdx int, title, description string) error
 	t := &b.Columns[colIdx].Tasks[taskIdx]
 	t.Title = title
 	t.Description = strings.TrimSpace(description)
+	t.Labels = normalizeLabels(labels)
 	t.UpdatedAt = time.Now().UTC().Truncate(time.Second)
 	return nil
+}
+
+// NormalizeLabels is the exported alias used by callers (e.g. the TUI) that
+// need to compare against what AddTask/UpdateTask will store.
+func NormalizeLabels(labels []string) []string { return normalizeLabels(labels) }
+
+// normalizeLabels trims, lowercases, drops empties, and deduplicates labels
+// while preserving first-seen order. Returns nil for an empty result so the
+// markdown serializer can omit the labels field entirely.
+func normalizeLabels(labels []string) []string {
+	if len(labels) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(labels))
+	out := make([]string, 0, len(labels))
+	for _, l := range labels {
+		l = strings.ToLower(strings.TrimSpace(l))
+		if l == "" {
+			continue
+		}
+		if _, dup := seen[l]; dup {
+			continue
+		}
+		seen[l] = struct{}{}
+		out = append(out, l)
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 // DeleteTask removes a task at (colIdx, taskIdx).
