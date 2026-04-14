@@ -12,10 +12,10 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/vj/doit/internal/config"
-	"github.com/vj/doit/internal/git"
-	"github.com/vj/doit/internal/store"
-	"github.com/vj/doit/internal/tui"
+	"github.com/vj--/doit/internal/config"
+	"github.com/vj--/doit/internal/git"
+	"github.com/vj--/doit/internal/store"
+	"github.com/vj--/doit/internal/tui"
 )
 
 var (
