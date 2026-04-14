@@ -12,6 +12,7 @@ import (
 	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/glamour"
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/vj/doit/internal/config"
@@ -56,9 +57,47 @@ type Model struct {
 	status    string
 	statusErr bool
 
-	saving  bool
-	spinner spinner.Model
-	help    help.Model
+	saving   bool
+	spinner  spinner.Model
+	help     help.Model
+	mdWidth  int
+	renderer *glamour.TermRenderer
+}
+
+// detailPaneWidth returns the width reserved for the right-hand task detail
+// pane. It shrinks to 0 when the terminal is too narrow to fit it alongside
+// at least one column of reasonable width.
+func (m *Model) detailPaneWidth() int {
+	if m.width < 80 {
+		return 0
+	}
+	w := m.width / 3
+	if w < 32 {
+		w = 32
+	}
+	if w > 60 {
+		w = 60
+	}
+	return w
+}
+
+func (m *Model) rebuildRenderer() {
+	w := m.detailPaneWidth() - 4
+	if w < 20 {
+		w = 20
+	}
+	if w == m.mdWidth && m.renderer != nil {
+		return
+	}
+	r, err := glamour.NewTermRenderer(
+		glamour.WithAutoStyle(),
+		glamour.WithWordWrap(w),
+	)
+	if err != nil {
+		return
+	}
+	m.renderer = r
+	m.mdWidth = w
 }
 
 // NewModel constructs the initial TUI model. If the board file does not exist
@@ -178,6 +217,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.bodyInput.SetWidth(msg.Width - 10)
 		m.filterInput.Width = msg.Width - 10
 		m.help.Width = msg.Width
+		m.rebuildRenderer()
 		return m, nil
 
 	case spinner.TickMsg:
@@ -733,7 +773,16 @@ func (m *Model) viewBoardWith(centerOverride string) string {
 	}
 
 	header := m.renderHeader()
-	body := m.renderColumns()
+
+	var body string
+	if paneW := m.detailPaneWidth(); paneW > 0 {
+		cols := m.renderColumnsWidth(m.width - paneW)
+		detail := m.renderDetailPane(paneW)
+		body = lipgloss.JoinHorizontal(lipgloss.Top, cols, detail)
+	} else {
+		body = m.renderColumns()
+	}
+
 	statusBar := m.renderStatusBar(centerOverride)
 	helpLine := m.help.View(m.keymap)
 
@@ -748,9 +797,13 @@ func (m *Model) renderHeader() string {
 }
 
 func (m *Model) renderColumns() string {
+	return m.renderColumnsWidth(m.width)
+}
+
+func (m *Model) renderColumnsWidth(total int) string {
 	colCount := len(m.board.Columns)
 	gutters := 2 * colCount
-	colWidth := (m.width - gutters) / colCount
+	colWidth := (total - gutters) / colCount
 	if colWidth < 18 {
 		colWidth = 18
 	}
@@ -789,10 +842,21 @@ func (m *Model) renderColumn(ci int, col tasks.Column, width int) string {
 
 func (m *Model) renderCard(ci, ti int, t tasks.Task, width int) string {
 	focused := ci == m.focusCol && ti == m.focusTask
-	stripe := styleCardStripeIdle.Render("▍")
+
+	stripeChar := "▍"
+	var stripe string
+	if focused {
+		stripe = lipgloss.NewStyle().Foreground(stripeColorFor(t.Labels)).Render(stripeChar)
+	} else if len(t.Labels) > 0 {
+		// A dimmer stripe keyed off the tag color so users can scan by type
+		// even when the card isn't focused.
+		stripe = lipgloss.NewStyle().Foreground(stripeColorFor(t.Labels)).Faint(true).Render(stripeChar)
+	} else {
+		stripe = styleCardStripeIdle.Render(stripeChar)
+	}
+
 	titleStyle := styleCardTitle
 	if focused {
-		stripe = styleCardStripe.Render("▍")
 		titleStyle = styleCardTitleFocused
 	}
 
@@ -812,7 +876,7 @@ func (m *Model) renderCard(ci, ti int, t tasks.Task, width int) string {
 	if len(t.Labels) > 0 {
 		var pills []string
 		for _, l := range t.Labels {
-			pills = append(pills, styleLabel.Render(l))
+			pills = append(pills, labelPill(l))
 		}
 		lines = append(lines, strings.Join(pills, " "))
 	}
@@ -820,6 +884,55 @@ func (m *Model) renderCard(ci, ti int, t tasks.Task, width int) string {
 	body := lipgloss.JoinVertical(lipgloss.Left, lines...)
 	card := lipgloss.JoinHorizontal(lipgloss.Top, stripe, " "+body)
 	return lipgloss.NewStyle().MarginBottom(1).Render(card)
+}
+
+func (m *Model) renderDetailPane(width int) string {
+	pane := lipgloss.NewStyle().
+		Width(width).
+		Padding(0, 2).
+		BorderStyle(lipgloss.NormalBorder()).
+		BorderLeft(true).
+		BorderForeground(colFaint)
+
+	t := m.currentTask()
+	if t == nil {
+		return pane.Render(styleHelp.Render("No task selected."))
+	}
+
+	stripe := lipgloss.NewStyle().Foreground(stripeColorFor(t.Labels)).Render("▍")
+	title := stripe + " " + styleCardTitleFocused.Render(t.Title)
+
+	var pills string
+	if len(t.Labels) > 0 {
+		var p []string
+		for _, l := range t.Labels {
+			p = append(p, labelPill(l))
+		}
+		pills = strings.Join(p, "  ")
+	}
+
+	var body string
+	if t.Description == "" {
+		body = styleHelp.Render("(no description — press e to edit)")
+	} else if m.renderer != nil {
+		out, err := m.renderer.Render(t.Description)
+		if err != nil {
+			body = t.Description
+		} else {
+			body = strings.TrimRight(out, "\n")
+		}
+	} else {
+		body = t.Description
+	}
+
+	meta := styleHelp.Render(fmt.Sprintf("id:%s · updated %s", t.ID, t.UpdatedAt.Format("2006-01-02 15:04")))
+
+	parts := []string{title}
+	if pills != "" {
+		parts = append(parts, pills)
+	}
+	parts = append(parts, "", body, "", meta)
+	return pane.Render(lipgloss.JoinVertical(lipgloss.Left, parts...))
 }
 
 func (m *Model) renderStatusBar(centerOverride string) string {
