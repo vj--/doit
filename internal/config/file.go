@@ -13,10 +13,11 @@ import (
 // Absent fields are represented as empty / nil so callers can distinguish
 // "unset" from "set to zero value" and apply precedence correctly.
 type FileConfig struct {
-	Theme    string
-	Repo     string
-	File     string
-	NoCommit *bool
+	Theme             string
+	Repo              string
+	File              string
+	NoCommit          *bool
+	HideDoneAfterDays *int
 }
 
 // DefaultPath returns the platform-appropriate config file location:
@@ -74,6 +75,12 @@ func Load(path string) (FileConfig, error) {
 				return fc, fmt.Errorf("%s:%d: no_commit must be true/false", path, lineno)
 			}
 			fc.NoCommit = &b
+		case "hide_done_after_days":
+			n, err := strconv.Atoi(val)
+			if err != nil || n < 0 {
+				return fc, fmt.Errorf("%s:%d: hide_done_after_days must be a non-negative integer", path, lineno)
+			}
+			fc.HideDoneAfterDays = &n
 		default:
 			return fc, fmt.Errorf("%s:%d: unknown key %q", path, lineno, key)
 		}

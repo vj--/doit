@@ -38,6 +38,7 @@ func run() error {
 	noCommit := fs.Bool("no-commit", false, "edit the file without committing")
 	configPath := fs.String("config", "", "path to config file (default: platform user config dir)")
 	theme := fs.String("theme", "", "force UI theme: light|dark (overrides auto-detect; useful inside tmux)")
+	hideDoneAfter := fs.Int("hide-done-after", 5, "hide tasks in Done older than N days (0 = never hide)")
 	showVersion := fs.Bool("version", false, "print version and exit")
 
 	if err := fs.Parse(os.Args[1:]); err != nil {
@@ -77,6 +78,9 @@ func run() error {
 	if !setFlags["no-commit"] && fileCfg.NoCommit != nil {
 		*noCommit = *fileCfg.NoCommit
 	}
+	if !setFlags["hide-done-after"] && fileCfg.HideDoneAfterDays != nil {
+		*hideDoneAfter = *fileCfg.HideDoneAfterDays
+	}
 	// Theme precedence: --theme flag > DOIT_THEME env > config file.
 	// (env was already applied in tui.init(); flag/config take precedence over it.)
 	switch {
@@ -92,9 +96,10 @@ func run() error {
 	}
 
 	cfg := config.Config{
-		Repo:     absRepo,
-		File:     *file,
-		NoCommit: *noCommit,
+		Repo:              absRepo,
+		File:              *file,
+		NoCommit:          *noCommit,
+		HideDoneAfterDays: *hideDoneAfter,
 	}
 	if err := cfg.Validate(); err != nil {
 		return err

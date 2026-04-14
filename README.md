@@ -103,6 +103,7 @@ Flags:
 | `--file <name>` | `board.md` | Markdown file inside the repo. |
 | `--no-commit` | off | Edit the file without committing. |
 | `--theme <light\|dark>` | auto | Force UI theme. Useful when running inside `tmux`, where background auto-detection often fails. |
+| `--hide-done-after <days>` | `5` | Hide tasks in the **Done** column whose last update is older than N days. `0` disables hiding. See [Hiding old Done tasks](#hiding-old-done-tasks). |
 | `--config <path>` | *(platform default)* | Path to a config file. See [Config file](#config-file). |
 | `--version` | | Print version and exit. |
 
@@ -116,6 +117,16 @@ DOIT_THEME=light doit
 ```
 
 Precedence: `--theme` flag > `DOIT_THEME` env var > `theme` in config file > auto-detect.
+
+### Hiding old Done tasks
+
+To keep the board scannable, tasks in the **Done** column whose `UpdatedAt` is older than `--hide-done-after` days (default **5**) are hidden from view. The underlying markdown file is not touched — hidden tasks still live in `board.md` and in git history.
+
+- A column with hidden tasks shows a `+N hidden · press a` footer.
+- Press **`a`** to toggle visibility and see all Done tasks again.
+- Set `--hide-done-after 0` (or `hide_done_after_days = 0` in the config file) to disable hiding entirely.
+
+The rule matches columns by title (case-insensitive, trimmed), so renaming `Done` → `done` still works; a column with a different name (e.g. `Archive`) is unaffected.
 
 ### Config file
 
@@ -133,13 +144,14 @@ Format is simple `key = value` (one per line, `#` for comments — TOML-compatib
 
 ```toml
 # ~/.config/doit/config.toml
-repo      = "~/my-tasks"
-file      = "board.md"
-theme     = "light"
-no_commit = false
+repo                 = "~/my-tasks"
+file                 = "board.md"
+theme                = "light"
+no_commit            = false
+hide_done_after_days = 5
 ```
 
-Supported keys: `repo`, `file`, `theme`, `no_commit`. A leading `~/` in `repo` is expanded to your home directory.
+Supported keys: `repo`, `file`, `theme`, `no_commit`, `hide_done_after_days`. A leading `~/` in `repo` is expanded to your home directory.
 
 Precedence for every setting: **CLI flag > config file > built-in default**.
 
@@ -155,6 +167,7 @@ Precedence for every setting: **CLI flag > config file > built-in default**.
 | `e` / `Enter` | Edit focused card |
 | `d` | Delete focused card (with confirm) |
 | `/` | Filter cards |
+| `a` | Toggle showing hidden Done tasks |
 | `?` | Toggle help |
 | `q` / `Ctrl+C` | Quit (flushes pending commit) |
 

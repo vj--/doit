@@ -12,6 +12,10 @@ type Config struct {
 	Repo     string
 	File     string
 	NoCommit bool
+
+	// HideDoneAfterDays hides tasks in the "Done" column whose UpdatedAt is
+	// older than this many days. 0 disables hiding (show everything).
+	HideDoneAfterDays int
 }
 
 func (c Config) FilePath() string {
@@ -36,6 +40,9 @@ func (c Config) Validate() error {
 	}
 	if c.File == "" {
 		return errors.New("--file must not be empty")
+	}
+	if c.HideDoneAfterDays < 0 {
+		return fmt.Errorf("hide_done_after_days must be >= 0, got %d", c.HideDoneAfterDays)
 	}
 	if filepath.IsAbs(c.File) || filepath.Clean(c.File) != c.File || containsDotDot(c.File) {
 		return fmt.Errorf("--file must be a simple relative name, got %q", c.File)
