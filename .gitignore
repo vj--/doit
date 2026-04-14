@@ -1,0 +1,40 @@
+# Binaries
+/doit
+/bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# Go build / tool caches
+/vendor/
+/tmp/
+coverage.out
+coverage.html
+
+# Air / live-reload
+.air.toml.local
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Local tasks data (if you keep a sample repo inside this one for dev)
+/tmp-data/
+/.local/
+
+# Claude Code / planning scratch
+.claude/
+CLAUDE.md
