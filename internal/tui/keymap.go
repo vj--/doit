@@ -2,6 +2,21 @@ package tui
 
 import "github.com/charmbracelet/bubbles/key"
 
+// ShortHelp / FullHelp let keymap satisfy bubbles/help.KeyMap so the help
+// bubble can render the same bindings we react to in Update.
+func (k keymap) ShortHelp() []key.Binding {
+	return []key.Binding{k.Left, k.Right, k.Up, k.Down, k.New, k.Edit, k.Delete, k.Help, k.Quit}
+}
+
+func (k keymap) FullHelp() [][]key.Binding {
+	return [][]key.Binding{
+		{k.Left, k.Right, k.Up, k.Down},
+		{k.MoveLeft, k.MoveRight, k.MoveUp, k.MoveDown},
+		{k.New, k.Edit, k.Delete, k.Filter},
+		{k.Help, k.Quit},
+	}
+}
+
 type keymap struct {
 	Left, Right      key.Binding
 	Up, Down         key.Binding

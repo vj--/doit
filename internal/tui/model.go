@@ -6,7 +6,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/bubbles/key"
+	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
@@ -54,7 +56,9 @@ type Model struct {
 	status    string
 	statusErr bool
 
-	saving bool
+	saving  bool
+	spinner spinner.Model
+	help    help.Model
 }
 
 // NewModel constructs the initial TUI model. If the board file does not exist
@@ -76,6 +80,20 @@ func NewModel(ctx context.Context, cfg config.Config, s *store.Store) (*Model, e
 	m.filterInput.Placeholder = "Filter (substring)"
 	m.filterInput.CharLimit = 200
 
+	sp := spinner.New()
+	sp.Spinner = spinner.Dot
+	sp.Style = lipgloss.NewStyle().Foreground(colPurple)
+	m.spinner = sp
+
+	h := help.New()
+	h.Styles.ShortKey = lipgloss.NewStyle().Foreground(colPink).Bold(true)
+	h.Styles.ShortDesc = lipgloss.NewStyle().Foreground(colMuted)
+	h.Styles.FullKey = h.Styles.ShortKey
+	h.Styles.FullDesc = h.Styles.ShortDesc
+	h.Styles.ShortSeparator = lipgloss.NewStyle().Foreground(colFaint)
+	h.Styles.FullSeparator = h.Styles.ShortSeparator
+	m.help = h
+
 	if !s.Exists() {
 		m.mode = modePromptCreate
 		return m, nil
@@ -88,7 +106,7 @@ func NewModel(ctx context.Context, cfg config.Config, s *store.Store) (*Model, e
 	return m, nil
 }
 
-func (m *Model) Init() tea.Cmd { return tickReloadCmd() }
+func (m *Model) Init() tea.Cmd { return tea.Batch(tickReloadCmd(), m.spinner.Tick) }
 
 // -- Reload ticker --
 
@@ -159,7 +177,13 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 		m.bodyInput.SetWidth(msg.Width - 10)
 		m.filterInput.Width = msg.Width - 10
+		m.help.Width = msg.Width
 		return m, nil
+
+	case spinner.TickMsg:
+		var cmd tea.Cmd
+		m.spinner, cmd = m.spinner.Update(msg)
+		return m, cmd
 
 	case reloadTickMsg:
 		// Idle poll. Skip while a save is in flight to avoid clobbering an
@@ -589,58 +613,74 @@ func (m *Model) currentTask() *tasks.Task {
 func (m *Model) View() string {
 	switch m.mode {
 	case modePromptCreate:
-		return m.viewPromptCreate()
+		return m.overlay(m.viewPromptCreate())
 	case modeHelp:
-		return m.viewHelp()
+		return m.overlay(m.viewHelpModal())
 	case modeEdit:
-		return m.viewEdit()
+		return m.overlay(m.viewEdit())
 	case modeConfirmDelete:
-		return m.viewConfirmDelete()
+		return m.overlay(m.viewConfirmDelete())
 	case modeFilter:
-		return m.viewFilter()
+		return m.viewBoardWith(m.viewFilterInline())
 	}
 	return m.viewBoard()
 }
 
-func (m *Model) viewFilter() string {
-	box := lipgloss.JoinVertical(lipgloss.Left,
-		styleHeader.Render("Filter"),
-		"",
-		m.filterInput.View(),
-		"",
-		styleHelp.Render("Enter: apply   Esc: clear"),
-	)
-	return lipgloss.NewStyle().Padding(1, 2).Render(box)
+// overlay centers a modal in the viewport. The board is not dimmed behind it
+// since lipgloss has no built-in opacity; we just render the modal on its own.
+func (m *Model) overlay(content string) string {
+	if m.width == 0 || m.height == 0 {
+		return content
+	}
+	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, content)
+}
+
+func (m *Model) viewFilterInline() string {
+	return styleStatusSegment.Render("/ " + m.filterInput.View())
 }
 
 func (m *Model) viewPromptCreate() string {
-	msg := fmt.Sprintf(
-		"%s does not exist in %s.\n\nCreate it with default columns (Todo, In Progress, Done)? [Y/n]",
+	body := fmt.Sprintf(
+		"%s does not exist in %s.\n\nCreate it with default columns\n(Todo, In Progress, Done)?",
 		m.cfg.File, m.cfg.Repo,
 	)
-	return lipgloss.NewStyle().Padding(1, 2).Render(msg)
+	box := lipgloss.JoinVertical(lipgloss.Left,
+		styleModalTitle.Render("Create board"),
+		"",
+		body,
+		"",
+		styleHelp.Render("[Y] create   [n] cancel"),
+	)
+	return styleModal.Render(box)
 }
 
-func (m *Model) viewHelp() string {
-	lines := []string{
-		"doit — keybindings",
-		"",
-		"  h/←, l/→    move focus between columns",
-		"  j/↓, k/↑    move focus between cards",
-		"  H, L        move focused card to column left/right",
-		"  J, K        reorder focused card within column",
-		"  n           new card",
-		"  e / Enter   edit focused card",
-		"  d           delete focused card (with confirm)",
-		"  /           filter cards",
-		"  ?           toggle help",
-		"  q / Ctrl+C  quit",
-		"",
-		"In edit modal: Tab switches title/body, Enter (on title) or Ctrl+S saves, Esc cancels.",
-		"",
-		"press any key to return",
+func (m *Model) viewHelpModal() string {
+	rows := [][2]string{
+		{"h/←  l/→", "move focus between columns"},
+		{"j/↓  k/↑", "move focus between cards"},
+		{"H  L", "move card to left/right column"},
+		{"J  K", "reorder card within column"},
+		{"n", "new card"},
+		{"e / ⏎", "edit focused card"},
+		{"d", "delete focused card"},
+		{"/", "filter cards"},
+		{"?", "toggle help"},
+		{"q / Ctrl+C", "quit"},
 	}
-	return lipgloss.NewStyle().Padding(1, 2).Render(strings.Join(lines, "\n"))
+	keyStyle := lipgloss.NewStyle().Foreground(colPink).Bold(true).Width(12)
+	descStyle := lipgloss.NewStyle().Foreground(colText)
+	var lines []string
+	lines = append(lines, styleModalTitle.Render("doit · keybindings"), "")
+	for _, r := range rows {
+		lines = append(lines, keyStyle.Render(r[0])+descStyle.Render(r[1]))
+	}
+	lines = append(lines,
+		"",
+		styleHelp.Render("In edit modal: Tab switches fields · ⏎/Ctrl+S saves · Esc cancels"),
+		"",
+		styleHelp.Render("press any key to return"),
+	)
+	return styleModal.Render(lipgloss.JoinVertical(lipgloss.Left, lines...))
 }
 
 func (m *Model) viewEdit() string {
@@ -648,106 +688,193 @@ func (m *Model) viewEdit() string {
 	if m.editingNew {
 		title = "New task"
 	}
+	labelStyle := lipgloss.NewStyle().Foreground(colMuted).MarginTop(1)
 	box := lipgloss.JoinVertical(lipgloss.Left,
-		styleHeader.Render(title),
-		"",
-		"Title:",
+		styleModalTitle.Render(title),
+		labelStyle.Render("Title"),
 		m.titleInput.View(),
-		"",
-		"Body:",
+		labelStyle.Render("Body"),
 		m.bodyInput.View(),
 		"",
-		styleHelp.Render("Tab: switch field   Enter (title) / Ctrl+S: save   Esc: cancel"),
+		styleHelp.Render("Tab switch · ⏎/Ctrl+S save · Esc cancel"),
 	)
-	return lipgloss.NewStyle().Padding(1, 2).Render(box)
+	return styleModal.Render(box)
 }
 
 func (m *Model) viewConfirmDelete() string {
 	t := m.currentTask()
 	if t == nil {
-		return "nothing to delete"
+		return styleModal.Render("nothing to delete")
 	}
-	return lipgloss.NewStyle().Padding(1, 2).Render(
-		fmt.Sprintf("Delete %q? [y/N]", t.Title),
+	box := lipgloss.JoinVertical(lipgloss.Left,
+		styleModalTitle.Render("Delete task"),
+		"",
+		fmt.Sprintf("Delete %q?", t.Title),
+		"",
+		styleHelp.Render("[y] yes   [n/Esc] no"),
 	)
+	return styleModal.Render(box)
 }
 
+// viewBoard renders the main Kanban layout: header accent bar, columns, and
+// a vim-style status footer.
 func (m *Model) viewBoard() string {
+	return m.viewBoardWith("")
+}
+
+// viewBoardWith lets callers substitute a custom center segment into the
+// status bar (e.g. an inline filter input).
+func (m *Model) viewBoardWith(centerOverride string) string {
 	if len(m.board.Columns) == 0 {
-		return lipgloss.NewStyle().Padding(1, 2).Render("Board has no columns. Edit board.md to add some.")
+		return lipgloss.NewStyle().Padding(1, 2).Render(
+			styleBoardTitle.Render(m.board.Title) + "\n\n" +
+				styleHelp.Render("Board has no columns. Edit "+m.cfg.File+" to add some."),
+		)
 	}
 
-	header := styleHeader.Render(m.board.Title) + " " +
-		styleStatus.Render(fmt.Sprintf("(%s)", m.cfg.File))
+	header := m.renderHeader()
+	body := m.renderColumns()
+	statusBar := m.renderStatusBar(centerOverride)
+	helpLine := m.help.View(m.keymap)
 
+	return lipgloss.JoinVertical(lipgloss.Left, header, "", body, "", statusBar, helpLine)
+}
+
+func (m *Model) renderHeader() string {
+	bar := styleAccentBar.Render("▍")
+	title := styleBoardTitle.Render(m.board.Title)
+	file := styleFilename.Render(" · " + m.cfg.File)
+	return lipgloss.NewStyle().Padding(0, 1).Render(bar + " " + title + file)
+}
+
+func (m *Model) renderColumns() string {
 	colCount := len(m.board.Columns)
-	gutters := 2 * colCount // margin per column
+	gutters := 2 * colCount
 	colWidth := (m.width - gutters) / colCount
-	if colWidth < 20 {
-		colWidth = 20
+	if colWidth < 18 {
+		colWidth = 18
 	}
-
 	var rendered []string
 	for ci, col := range m.board.Columns {
 		rendered = append(rendered, m.renderColumn(ci, col, colWidth))
 	}
-	body := lipgloss.JoinHorizontal(lipgloss.Top, rendered...)
-
-	status := m.status
-	if m.saving {
-		status = "saving…"
-	}
-	statusLine := styleStatus.Render(status)
-	if m.statusErr {
-		statusLine = styleError.Render(status)
-	}
-	hint := styleHelp.Render("? help   n new   e edit   H/L move   q quit")
-
-	return lipgloss.JoinVertical(lipgloss.Left, header, body, statusLine, hint)
+	return lipgloss.JoinHorizontal(lipgloss.Top, rendered...)
 }
 
 func (m *Model) renderColumn(ci int, col tasks.Column, width int) string {
-	title := fmt.Sprintf("%s (%d)", col.Title, len(col.Tasks))
-	var cards []string
-	cards = append(cards, styleColumnTitle.Render(title))
+	focused := ci == m.focusCol
+	titleStyle := styleColumnTitle
+	ruleStyle := styleColumnRule
+	if focused {
+		titleStyle = styleColumnTitleFocused
+		ruleStyle = styleColumnRuleFocused
+	}
+	title := titleStyle.Render(col.Title) + " " + styleColumnCount.Render(fmt.Sprintf("· %d", len(col.Tasks)))
+	rule := ruleStyle.Render(strings.Repeat("─", width-2))
+
+	parts := []string{title, rule}
 	for ti, t := range col.Tasks {
 		if m.filter != "" && !matchesFilter(t, m.filter) {
 			continue
 		}
-		cards = append(cards, m.renderCard(ci, ti, t, width-4))
+		parts = append(parts, m.renderCard(ci, ti, t, width-2))
 	}
-	content := lipgloss.JoinVertical(lipgloss.Left, cards...)
-	style := styleColumn
-	if ci == m.focusCol {
-		style = styleColumnFocused
+	if len(parts) == 2 {
+		parts = append(parts, styleHelp.Render("  (empty)"))
 	}
-	return style.Width(width).Render(content)
+	return lipgloss.NewStyle().Width(width).Padding(0, 1).Render(
+		lipgloss.JoinVertical(lipgloss.Left, parts...),
+	)
 }
 
 func (m *Model) renderCard(ci, ti int, t tasks.Task, width int) string {
-	body := t.Title
+	focused := ci == m.focusCol && ti == m.focusTask
+	stripe := styleCardStripeIdle.Render("▍")
+	titleStyle := styleCardTitle
+	if focused {
+		stripe = styleCardStripe.Render("▍")
+		titleStyle = styleCardTitleFocused
+	}
+
+	innerWidth := width - 2
+	if innerWidth < 4 {
+		innerWidth = 4
+	}
+
+	title := titleStyle.Render(truncate(t.Title, innerWidth))
+
+	var lines []string
+	lines = append(lines, title)
 	if t.Description != "" {
-		// Show first line of description as a subtle preview.
 		preview := strings.SplitN(t.Description, "\n", 2)[0]
-		max := width - 2
-		if max < 1 {
-			max = 1
-		}
-		runes := []rune(preview)
-		if len(runes) > max {
-			if max-1 < 0 {
-				preview = "…"
-			} else {
-				preview = string(runes[:max-1]) + "…"
-			}
-		}
-		body += "\n" + styleHelp.Render(preview)
+		lines = append(lines, styleCardPreview.Render(truncate(preview, innerWidth)))
 	}
-	style := styleCard
-	if ci == m.focusCol && ti == m.focusTask {
-		style = styleCardFocused
+	if len(t.Labels) > 0 {
+		var pills []string
+		for _, l := range t.Labels {
+			pills = append(pills, styleLabel.Render(l))
+		}
+		lines = append(lines, strings.Join(pills, " "))
 	}
-	return style.Width(width).Render(body)
+
+	body := lipgloss.JoinVertical(lipgloss.Left, lines...)
+	card := lipgloss.JoinHorizontal(lipgloss.Top, stripe, " "+body)
+	return lipgloss.NewStyle().MarginBottom(1).Render(card)
+}
+
+func (m *Model) renderStatusBar(centerOverride string) string {
+	mode := styleStatusMode.Render("BOARD")
+	if m.saving {
+		mode = styleStatusSaving.Render(m.spinner.View() + " SAVE")
+	}
+	if m.statusErr {
+		mode = styleStatusError.Render("ERROR")
+	}
+
+	left := mode + styleStatusSegment.Render(m.cfg.File)
+
+	center := centerOverride
+	if center == "" && m.status != "" {
+		s := m.status
+		if m.statusErr {
+			s = "× " + s
+		}
+		center = styleStatusSegment.Render(truncate(s, 60))
+	}
+
+	var pos string
+	if col := m.currentColumn(); col != nil {
+		pos = fmt.Sprintf("%s %d/%d · %d/%d",
+			col.Title,
+			m.focusCol+1, len(m.board.Columns),
+			min(m.focusTask+1, len(col.Tasks)), len(col.Tasks),
+		)
+	}
+	right := styleStatusSegmentMuted.Render(pos)
+	if m.filter != "" {
+		right = styleStatusSegment.Render("/"+m.filter) + right
+	}
+
+	gap := m.width - lipgloss.Width(left) - lipgloss.Width(center) - lipgloss.Width(right)
+	if gap < 0 {
+		gap = 0
+	}
+	filler := styleStatusBarBase.Render(strings.Repeat(" ", gap))
+	return styleStatusBarBase.Width(m.width).Render(left + center + filler + right)
+}
+
+func truncate(s string, max int) string {
+	if max <= 0 {
+		return ""
+	}
+	r := []rune(s)
+	if len(r) <= max {
+		return s
+	}
+	if max == 1 {
+		return "…"
+	}
+	return string(r[:max-1]) + "…"
 }
 
 func matchesFilter(t tasks.Task, q string) bool {
