@@ -56,3 +56,16 @@ changelog:
 release:
   draft: false
   prerelease: auto
+
+notarize:
+  macos:
+    - enabled: '{{ isEnvSet "MACOS_CERT_P12_BASE64" }}'
+      ids: [doit]
+      sign:
+        certificate: '{{.Env.MACOS_CERT_P12_BASE64}}'
+        password: '{{.Env.MACOS_CERT_PASSWORD}}'
+      notarize:
+        issuer_id: '{{.Env.MACOS_NOTARY_ISSUER_ID}}'
+        key_id: '{{.Env.MACOS_NOTARY_KEY_ID}}'
+        key: '{{.Env.MACOS_NOTARY_KEY_BASE64}}'
+        wait: true
