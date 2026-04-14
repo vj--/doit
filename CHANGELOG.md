@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-04-14
+
+Re-releases 0.2.1 so the `CHANGELOG.md` bundled in the archives is up to date. No code or binary changes.
+
+## [0.2.1] - 2026-04-14
+
 ### Added
 - macOS release binaries are now signed and notarized with a Developer ID, so `doit` runs on macOS without Gatekeeper's "unidentified developer" prompt.
 
