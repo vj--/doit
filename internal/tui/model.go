@@ -90,8 +90,16 @@ func (m *Model) rebuildRenderer() {
 	if w == m.mdWidth && m.renderer != nil {
 		return
 	}
+	// Tie glamour's palette to lipgloss's resolved background so --theme /
+	// DOIT_THEME / config theme actually take effect inside the detail pane.
+	// WithAutoStyle runs glamour's own background probe which breaks inside
+	// tmux and some SSH sessions, yielding unreadable washed-out text.
+	style := "dark"
+	if !lipgloss.HasDarkBackground() {
+		style = "light"
+	}
 	r, err := glamour.NewTermRenderer(
-		glamour.WithAutoStyle(),
+		glamour.WithStandardStyle(style),
 		glamour.WithWordWrap(w),
 	)
 	if err != nil {
