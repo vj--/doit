@@ -38,6 +38,21 @@ Grab the binary for your platform from the [Releases page](https://github.com/vj
 
 Supported platforms: macOS (Intel + Apple Silicon), Linux (amd64/arm64), Windows (amd64).
 
+#### First-run notes per platform
+
+**macOS.** Releases are signed with an Apple Developer ID and notarized, so Gatekeeper will not block `doit` as "unidentified." You will still see a one-time *"Apple could not verify 'doit' is free of malware"* prompt on first launch — this is the standard "downloaded from the internet" quarantine prompt that macOS shows for any CLI binary delivered in a tarball. Either:
+
+```sh
+# Remove the quarantine attribute
+xattr -d com.apple.quarantine /path/to/doit
+```
+
+or open **System Settings → Privacy & Security** after the first prompt and click **Open Anyway**. Subsequent launches run without a prompt.
+
+**Linux.** No special setup. Extract the tarball, `chmod +x doit` if needed, and run. If your terminal renders colors oddly under `tmux`, pass `--theme light` or `--theme dark` (see [Theme](#theme)).
+
+**Windows.** SmartScreen may show *"Windows protected your PC"* on first launch (binaries are not code-signed for Windows yet). Click **More info → Run anyway**. Release binaries are built with CGO disabled, so no Visual C++ runtime is required.
+
 ### Go install
 ```sh
 go install github.com/vj/doit@latest
