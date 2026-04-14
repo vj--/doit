@@ -15,9 +15,9 @@ import (
 	"github.com/charmbracelet/glamour"
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/vj/doit/internal/config"
-	"github.com/vj/doit/internal/store"
-	"github.com/vj/doit/internal/tasks"
+	"github.com/vj--/doit/internal/config"
+	"github.com/vj--/doit/internal/store"
+	"github.com/vj--/doit/internal/tasks"
 )
 
 // reloadInterval is how often we poll the on-disk mtime while idle.

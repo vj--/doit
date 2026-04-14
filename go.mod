@@ -1,4 +1,4 @@
-module github.com/vj/doit
+module github.com/vj--/doit
 
 go 1.24.2
 

@@ -34,7 +34,7 @@ A local-first, Kanban-style todo app that lives in your **terminal** and is back
 ## Install
 
 ### Download a release (recommended)
-Grab the binary for your platform from the [Releases page](https://github.com/vj/doit/releases), extract it, and put it on your `PATH`.
+Grab the binary for your platform from the [Releases page](https://github.com/vj--/doit/releases), extract it, and put it on your `PATH`.
 
 Supported platforms: macOS (Intel + Apple Silicon), Linux (amd64/arm64), Windows (amd64).
 
@@ -55,7 +55,7 @@ or open **System Settings → Privacy & Security** after the first prompt and cl
 
 ### Go install
 ```sh
-go install github.com/vj/doit@latest
+go install github.com/vj--/doit@latest
 ```
 
 > Building from source? See [`DEVELOPMENT.md`](./DEVELOPMENT.md).

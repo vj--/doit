@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/vj/doit/internal/tasks"
+	"github.com/vj--/doit/internal/tasks"
 )
 
 type fakeGit struct {

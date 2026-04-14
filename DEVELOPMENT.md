@@ -14,7 +14,7 @@ Requirements: Go 1.22+ and `git` on your `PATH`.
 
 ### Clone and fetch dependencies
 ```sh
-git clone https://github.com/vj/doit.git
+git clone https://github.com/vj--/doit.git
 cd doit
 go mod tidy
 ```

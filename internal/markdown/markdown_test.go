@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/vj/doit/internal/tasks"
+	"github.com/vj--/doit/internal/tasks"
 )
 
 func TestRoundTrip(t *testing.T) {

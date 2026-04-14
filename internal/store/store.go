@@ -16,8 +16,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/vj/doit/internal/markdown"
-	"github.com/vj/doit/internal/tasks"
+	"github.com/vj--/doit/internal/markdown"
+	"github.com/vj--/doit/internal/tasks"
 )
 
 type GitClient interface {

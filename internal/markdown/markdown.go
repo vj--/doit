@@ -23,7 +23,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/vj/doit/internal/tasks"
+	"github.com/vj--/doit/internal/tasks"
 )
 
 // Parse turns the markdown bytes into a Board.
