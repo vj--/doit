@@ -1,5 +1,9 @@
 # doit
 
+[![Release](https://img.shields.io/github/v/release/vj--/doit?label=release)](https://github.com/vj--/doit/releases/latest)
+[![CI](https://github.com/vj--/doit/actions/workflows/ci.yml/badge.svg)](https://github.com/vj--/doit/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 A local-first, Kanban-style todo app that lives in your **terminal** and is backed by a **git repository** instead of a database. Your tasks are a single markdown file in a repo you control — the app renders a keyboard-driven Kanban TUI, and commits every change locally. You push to GitHub (or any remote) whenever you want.
 
 > **Note:** This project is **AI-generated**. It was designed and implemented with [Claude Code](https://claude.com/claude-code) (Anthropic's CLI coding assistant) in collaboration with the repository owner. Treat it accordingly — review the code before you trust it with anything important.
