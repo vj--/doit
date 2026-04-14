@@ -19,10 +19,10 @@ func TestSlug(t *testing.T) {
 
 func TestMoveTaskColumn(t *testing.T) {
 	b := DefaultBoard()
-	if _, err := b.AddTask(0, "one", ""); err != nil {
+	if _, err := b.AddTask(0, "one", "", nil); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := b.AddTask(0, "two", ""); err != nil {
+	if _, err := b.AddTask(0, "two", "", nil); err != nil {
 		t.Fatal(err)
 	}
 	newIdx, err := b.MoveTaskColumn(0, 0, 1)
@@ -43,7 +43,7 @@ func TestMoveTaskColumn(t *testing.T) {
 func TestReorderWithinColumn(t *testing.T) {
 	b := DefaultBoard()
 	for _, title := range []string{"a", "b", "c"} {
-		if _, err := b.AddTask(0, title, ""); err != nil {
+		if _, err := b.AddTask(0, title, "", nil); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -66,7 +66,7 @@ func TestReorderWithinColumn(t *testing.T) {
 
 func TestReorderBounds(t *testing.T) {
 	b := DefaultBoard()
-	if _, err := b.AddTask(0, "a", ""); err != nil {
+	if _, err := b.AddTask(0, "a", "", nil); err != nil {
 		t.Fatal(err)
 	}
 	if idx, _ := b.ReorderWithinColumn(0, 0, -1); idx != 0 {

@@ -25,7 +25,7 @@ func TestSaveAtomicAndCommit(t *testing.T) {
 	s := New(path, g, false)
 
 	b := tasks.DefaultBoard()
-	if _, err := b.AddTask(0, "first", ""); err != nil {
+	if _, err := b.AddTask(0, "first", "", nil); err != nil {
 		t.Fatal(err)
 	}
 
