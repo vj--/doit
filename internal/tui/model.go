@@ -11,6 +11,7 @@ import (
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/textinput"
+	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/glamour"
 	"github.com/charmbracelet/lipgloss"
@@ -62,6 +63,7 @@ type Model struct {
 	saving   bool
 	spinner  spinner.Model
 	help     help.Model
+	viewport viewport.Model
 	mdWidth  int
 	renderer *glamour.TermRenderer
 }
@@ -145,6 +147,7 @@ func NewModel(ctx context.Context, cfg config.Config, s *store.Store) (*Model, e
 	h.Styles.ShortSeparator = lipgloss.NewStyle().Foreground(colFaint)
 	h.Styles.FullSeparator = h.Styles.ShortSeparator
 	m.help = h
+	m.viewport = viewport.New(0, 0)
 
 	if !s.Exists() {
 		m.mode = modePromptCreate
@@ -227,11 +230,14 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+		m.viewport.Width = msg.Width
+		m.viewport.Height = msg.Height - 5 // header(1) + blank(1) + blank(1) + statusbar(1) + helpline(1)
 		m.bodyInput.SetWidth(msg.Width - 10)
 		m.filterInput.Width = msg.Width - 10
 		m.labelsInput.Width = msg.Width - 10
 		m.help.Width = msg.Width
 		m.rebuildRenderer()
+		m.scrollToFocus()
 		return m, nil
 
 	case spinner.TickMsg:
@@ -358,6 +364,7 @@ func (m *Model) updateBoard(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.focusTask = 0
 			m.clampFocusToVisible()
 		}
+		m.scrollToFocus()
 		return m, nil
 	case key.Matches(msg, k.Right):
 		if len(m.board.Columns) > 0 {
@@ -365,12 +372,15 @@ func (m *Model) updateBoard(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.focusTask = 0
 			m.clampFocusToVisible()
 		}
+		m.scrollToFocus()
 		return m, nil
 	case key.Matches(msg, k.Up):
 		m.stepFocusTask(-1)
+		m.scrollToFocus()
 		return m, nil
 	case key.Matches(msg, k.Down):
 		m.stepFocusTask(+1)
+		m.scrollToFocus()
 		return m, nil
 	case key.Matches(msg, k.MoveLeft):
 		return m.moveCardColumn(-1)
@@ -627,6 +637,7 @@ func (m *Model) moveCardColumn(delta int) (tea.Model, tea.Cmd) {
 	m.focusCol = target
 	m.focusTask = newIdx
 	m.saving = true
+	m.scrollToFocus()
 	return m, m.saveCmd(fmt.Sprintf("doit: move %q from %s to %s", title, from, to))
 }
 
@@ -647,7 +658,59 @@ func (m *Model) reorderCard(delta int) (tea.Model, tea.Cmd) {
 	}
 	m.focusTask = newIdx
 	m.saving = true
+	m.scrollToFocus()
 	return m, m.saveCmd(fmt.Sprintf("doit: reorder %q", title))
+}
+
+// estimateCardHeight returns the rendered line count for a card without
+// re-rendering it, so scrollToFocus can work without a full layout pass.
+func estimateCardHeight(focused bool, t tasks.Task) int {
+	if focused {
+		h := 4 // border-top + title + border-bottom + margin
+		if t.Description != "" {
+			h++
+		}
+		if len(t.Labels) > 0 {
+			h++
+		}
+		return h
+	}
+	h := 2 // title + margin
+	if t.Description != "" {
+		h++
+	}
+	if len(t.Labels) > 0 {
+		h++
+	}
+	return h
+}
+
+// scrollToFocus adjusts the viewport offset so the focused card is visible.
+func (m *Model) scrollToFocus() {
+	if m.viewport.Height <= 0 || len(m.board.Columns) == 0 {
+		return
+	}
+	col := m.board.Columns[m.focusCol]
+	y := 2 // column title + rule
+	for ti, t := range col.Tasks {
+		if m.filter != "" && !matchesFilter(t, m.filter) {
+			continue
+		}
+		if m.isHiddenDone(col, t) {
+			continue
+		}
+		focused := ti == m.focusTask
+		h := estimateCardHeight(focused, t)
+		if focused {
+			if y < m.viewport.YOffset {
+				m.viewport.SetYOffset(y)
+			} else if y+h > m.viewport.YOffset+m.viewport.Height {
+				m.viewport.SetYOffset(y + h - m.viewport.Height)
+			}
+			return
+		}
+		y += h
+	}
 }
 
 func (m *Model) clampFocus() {
@@ -904,10 +967,13 @@ func (m *Model) viewBoardWith(centerOverride string) string {
 		body = m.renderColumns()
 	}
 
+	m.viewport.Width = m.width
+	m.viewport.SetContent(body)
+
 	statusBar := m.renderStatusBar(centerOverride)
 	helpLine := m.help.View(m.keymap)
 
-	return lipgloss.JoinVertical(lipgloss.Left, header, "", body, "", statusBar, helpLine)
+	return lipgloss.JoinVertical(lipgloss.Left, header, "", m.viewport.View(), "", statusBar, helpLine)
 }
 
 func (m *Model) renderHeader() string {
