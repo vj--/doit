@@ -972,26 +972,30 @@ func (m *Model) renderColumn(ci int, col tasks.Column, width int) string {
 func (m *Model) renderCard(ci, ti int, t tasks.Task, width int) string {
 	focused := ci == m.focusCol && ti == m.focusTask
 
-	stripeChar := "▍"
+	// Focused cards use a border (border+padding consume 4 chars: 1+1 each side).
+	// Unfocused cards use a stripe char + space (2 chars), leaving width-2 for body.
 	var stripe string
+	innerWidth := width - 2
 	if focused {
-		stripe = lipgloss.NewStyle().Foreground(stripeColorFor(t.Labels)).Render(stripeChar)
-	} else if len(t.Labels) > 0 {
-		// A dimmer stripe keyed off the tag color so users can scan by type
-		// even when the card isn't focused.
-		stripe = lipgloss.NewStyle().Foreground(stripeColorFor(t.Labels)).Faint(true).Render(stripeChar)
-	} else {
-		stripe = styleCardStripeIdle.Render(stripeChar)
+		innerWidth = width - 4
+	}
+	if innerWidth < 4 {
+		innerWidth = 4
+	}
+
+	if !focused {
+		if len(t.Labels) > 0 {
+			// A dimmer stripe keyed off the tag color so users can scan by type
+			// even when the card isn't focused.
+			stripe = lipgloss.NewStyle().Foreground(stripeColorFor(t.Labels)).Faint(true).Render("▍")
+		} else {
+			stripe = styleCardStripeIdle.Render("▍")
+		}
 	}
 
 	titleStyle := styleCardTitle
 	if focused {
 		titleStyle = styleCardTitleFocused
-	}
-
-	innerWidth := width - 2
-	if innerWidth < 4 {
-		innerWidth = 4
 	}
 
 	title := titleStyle.Render(truncate(t.Title, innerWidth))
@@ -1011,6 +1015,17 @@ func (m *Model) renderCard(ci, ti int, t tasks.Task, width int) string {
 	}
 
 	body := lipgloss.JoinVertical(lipgloss.Left, lines...)
+
+	if focused {
+		card := lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(stripeColorFor(t.Labels)).
+			Padding(0, 1).
+			Width(width - 4).
+			Render(body)
+		return lipgloss.NewStyle().MarginBottom(1).Render(card)
+	}
+
 	card := lipgloss.JoinHorizontal(lipgloss.Top, stripe, " "+body)
 	return lipgloss.NewStyle().MarginBottom(1).Render(card)
 }
