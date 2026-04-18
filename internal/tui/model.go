@@ -662,27 +662,17 @@ func (m *Model) reorderCard(delta int) (tea.Model, tea.Cmd) {
 	return m, m.saveCmd(fmt.Sprintf("doit: reorder %q", title))
 }
 
-// estimateCardHeight returns the rendered line count for a card without
-// re-rendering it, so scrollToFocus can work without a full layout pass.
-func estimateCardHeight(focused bool, t tasks.Task) int {
-	if focused {
-		h := 4 // border-top + title + border-bottom + margin
-		if t.Description != "" {
-			h++
-		}
-		if len(t.Labels) > 0 {
-			h++
-		}
-		return h
-	}
-	h := 2 // title + margin
+// estimateCardHeight returns the rendered line count for a card.
+// All cards have the same border structure (visible or space), so height is focus-independent.
+func estimateCardHeight(_ bool, t tasks.Task) int {
+	h := 3 // border-top + title + border-bottom (margin added separately via MarginBottom)
 	if t.Description != "" {
 		h++
 	}
 	if len(t.Labels) > 0 {
 		h++
 	}
-	return h
+	return h + 1 // +1 for MarginBottom
 }
 
 // scrollToFocus adjusts the viewport offset so the focused card is visible.
@@ -1038,25 +1028,23 @@ func (m *Model) renderColumn(ci int, col tasks.Column, width int) string {
 func (m *Model) renderCard(ci, ti int, t tasks.Task, width int) string {
 	focused := ci == m.focusCol && ti == m.focusTask
 
-	// Focused cards use a border (border+padding consume 4 chars: 1+1 each side).
-	// Unfocused cards use a stripe char + space (2 chars), leaving width-2 for body.
-	var stripe string
+	// All cards use a border (visible when focused, space chars when not) so
+	// layout is stable. Border = 1 char each side, no padding.
 	innerWidth := width - 2
-	if focused {
-		innerWidth = width - 4
-	}
 	if innerWidth < 4 {
 		innerWidth = 4
 	}
 
-	if !focused {
-		if len(t.Labels) > 0 {
-			// A dimmer stripe keyed off the tag color so users can scan by type
-			// even when the card isn't focused.
-			stripe = lipgloss.NewStyle().Foreground(stripeColorFor(t.Labels)).Faint(true).Render("▍")
-		} else {
-			stripe = styleCardStripeIdle.Render("▍")
-		}
+	// Unfocused cards use a space-border (invisible, same size as rounded border)
+	// so the layout never shifts when focus changes.
+	border := lipgloss.Border{
+		Top: " ", Bottom: " ", Left: " ", Right: " ",
+		TopLeft: " ", TopRight: " ", BottomLeft: " ", BottomRight: " ",
+	}
+	borderColor := lipgloss.TerminalColor(lipgloss.NoColor{})
+	if focused {
+		border = lipgloss.RoundedBorder()
+		borderColor = stripeColorFor(t.Labels)
 	}
 
 	titleStyle := styleCardTitle
@@ -1081,18 +1069,11 @@ func (m *Model) renderCard(ci, ti int, t tasks.Task, width int) string {
 	}
 
 	body := lipgloss.JoinVertical(lipgloss.Left, lines...)
-
-	if focused {
-		card := lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(stripeColorFor(t.Labels)).
-			Padding(0, 1).
-			Width(width - 4).
-			Render(body)
-		return lipgloss.NewStyle().MarginBottom(1).Render(card)
-	}
-
-	card := lipgloss.JoinHorizontal(lipgloss.Top, stripe, " "+body)
+	card := lipgloss.NewStyle().
+		Border(border).
+		BorderForeground(borderColor).
+		Width(innerWidth).
+		Render(body)
 	return lipgloss.NewStyle().MarginBottom(1).Render(card)
 }
 
